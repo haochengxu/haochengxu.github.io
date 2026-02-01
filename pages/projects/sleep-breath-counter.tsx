@@ -87,6 +87,17 @@ const SleepBreathCounter: React.FC = () => {
     }
   };
 
+  const resetToDefaults = () => {
+    if (confirm("确定要恢复默认设置吗？这将清除所有自定义方案。")) {
+      localStorage.removeItem("timer_presets");
+      localStorage.removeItem("timer_presets_version");
+      loadPresets();
+      setCurrentPreset(null);
+      setSegments([]);
+      alert("已恢复默认设置");
+    }
+  };
+
   const playBeep = (audioFile?: string) => {
     if (audioRef.current) {
       audioRef.current.src = audioFile || audioFiles[0];
@@ -95,7 +106,11 @@ const SleepBreathCounter: React.FC = () => {
   };
 
   const loadPreset = (presetId: string) => {
-    const preset = presets.find((p) => p.id === presetId);
+    // 从 localStorage 读取最新数据
+    const savedPresets = localStorage.getItem("timer_presets");
+    const currentPresets = savedPresets ? JSON.parse(savedPresets) : presets;
+    
+    const preset = currentPresets.find((p) => p.id === presetId);
     if (preset) {
       setCurrentPreset(preset);
       setSegments([...preset.segments]);
@@ -106,6 +121,9 @@ const SleepBreathCounter: React.FC = () => {
       setIsRunning(false);
       setIsPaused(false);
       setCurrentPage("timer");
+      
+      // 同步更新 presets state
+      setPresets(currentPresets);
     }
   };
 
@@ -138,13 +156,23 @@ const SleepBreathCounter: React.FC = () => {
 
   const saveCurrentPreset = () => {
     if (!currentPreset) return;
-    const newPresets = presets.map((p) =>
+    // 从 localStorage 读取最新数据，避免使用过期的 state
+    const savedPresets = localStorage.getItem("timer_presets");
+    const currentPresets = savedPresets ? JSON.parse(savedPresets) : presets;
+    
+    const newPresets = currentPresets.map((p) =>
       p.id === currentPreset.id
         ? { ...p, segments: [...segments], repeatTimes }
         : p
     );
     localStorage.setItem("timer_presets", JSON.stringify(newPresets));
     setPresets(newPresets);
+    
+    // 同步更新 currentPreset
+    const updatedPreset = newPresets.find(p => p.id === currentPreset.id);
+    if (updatedPreset) {
+      setCurrentPreset(updatedPreset);
+    }
   };
 
   const startTimer = () => {
@@ -268,9 +296,27 @@ const SleepBreathCounter: React.FC = () => {
 
   const deleteSegment = (index: number) => {
     if (confirm("确定删除此时间段吗？")) {
-      const newSegments = segments.filter((_, i) => i !== index);
-      setSegments(newSegments);
-      saveCurrentPreset();
+      const updatedSegments = segments.filter((_, i) => i !== index);
+      setSegments(updatedSegments);
+      
+      // 使用更新后的 segments 立即保存
+      if (currentPreset) {
+        const savedPresets = localStorage.getItem("timer_presets");
+        const currentPresets = savedPresets ? JSON.parse(savedPresets) : presets;
+        
+        const newPresets = currentPresets.map((p) =>
+          p.id === currentPreset.id
+            ? { ...p, segments: updatedSegments, repeatTimes }
+            : p
+        );
+        localStorage.setItem("timer_presets", JSON.stringify(newPresets));
+        setPresets(newPresets);
+        
+        const updatedPreset = newPresets.find(p => p.id === currentPreset.id);
+        if (updatedPreset) {
+          setCurrentPreset(updatedPreset);
+        }
+      }
     }
   };
 
@@ -293,15 +339,35 @@ const SleepBreathCounter: React.FC = () => {
         : audioFiles[segments.length % audioFiles.length], // 新增时分配新音频文件
     };
 
+    let updatedSegments;
     if (editingSegmentIndex >= 0) {
-      const newSegments = [...segments];
-      newSegments[editingSegmentIndex] = newSegment;
-      setSegments(newSegments);
+      updatedSegments = [...segments];
+      updatedSegments[editingSegmentIndex] = newSegment;
     } else {
-      setSegments([...segments, newSegment]);
+      updatedSegments = [...segments, newSegment];
     }
+    
+    setSegments(updatedSegments);
     setShowSegmentModal(false);
-    saveCurrentPreset();
+    
+    // 使用更新后的 segments 立即保存
+    if (currentPreset) {
+      const savedPresets = localStorage.getItem("timer_presets");
+      const currentPresets = savedPresets ? JSON.parse(savedPresets) : presets;
+      
+      const newPresets = currentPresets.map((p) =>
+        p.id === currentPreset.id
+          ? { ...p, segments: updatedSegments, repeatTimes }
+          : p
+      );
+      localStorage.setItem("timer_presets", JSON.stringify(newPresets));
+      setPresets(newPresets);
+      
+      const updatedPreset = newPresets.find(p => p.id === currentPreset.id);
+      if (updatedPreset) {
+        setCurrentPreset(updatedPreset);
+      }
+    }
   };
 
   const confirmRepeat = () => {
@@ -312,7 +378,25 @@ const SleepBreathCounter: React.FC = () => {
     }
     setRepeatTimes(times);
     setShowRepeatModal(false);
-    saveCurrentPreset();
+    
+    // 使用更新后的 repeatTimes 立即保存
+    if (currentPreset) {
+      const savedPresets = localStorage.getItem("timer_presets");
+      const currentPresets = savedPresets ? JSON.parse(savedPresets) : presets;
+      
+      const newPresets = currentPresets.map((p) =>
+        p.id === currentPreset.id
+          ? { ...p, segments: [...segments], repeatTimes: times }
+          : p
+      );
+      localStorage.setItem("timer_presets", JSON.stringify(newPresets));
+      setPresets(newPresets);
+      
+      const updatedPreset = newPresets.find(p => p.id === currentPreset.id);
+      if (updatedPreset) {
+        setCurrentPreset(updatedPreset);
+      }
+    }
   };
 
   return (
@@ -368,13 +452,21 @@ const SleepBreathCounter: React.FC = () => {
               ))}
             </div>
 
-            <button
-              className="w-full bg-white/20 backdrop-blur text-white rounded-2xl p-4 flex items-center justify-center gap-2 hover:bg-white/30 transition-colors"
-              onClick={() => setShowPresetModal(true)}
-            >
-              <span className="text-2xl">+</span>
-              <span>创建新方案</span>
-            </button>
+            <div className="space-y-3">
+              <button
+                className="w-full bg-white/20 backdrop-blur text-white rounded-2xl p-4 flex items-center justify-center gap-2 hover:bg-white/30 transition-colors"
+                onClick={() => setShowPresetModal(true)}
+              >
+                <span className="text-2xl">+</span>
+                <span>创建新方案</span>
+              </button>
+              <button
+                className="w-full bg-white/10 backdrop-blur text-white rounded-2xl p-3 text-sm hover:bg-white/20 transition-colors"
+                onClick={resetToDefaults}
+              >
+                恢复默认设置
+              </button>
+            </div>
           </div>
         ) : (
           <div className="max-w-2xl mx-auto">
