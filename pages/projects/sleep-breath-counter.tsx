@@ -101,7 +101,9 @@ const SleepBreathCounter: React.FC = () => {
   const playBeep = (audioFile?: string) => {
     if (audioRef.current) {
       audioRef.current.src = audioFile || audioFiles[0];
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().catch((err) => {
+        console.log("音频播放被阻止:", err);
+      });
     }
   };
 
@@ -182,7 +184,17 @@ const SleepBreathCounter: React.FC = () => {
     }
     // 开始时确保倒计时从当前段落时长开始
     setTimeLeft(segments[currentSegment]?.duration * 1000 || 0);
-    playBeep(segments[currentSegment]?.audioFile);
+    
+    // 立即播放音频（用户点击开始是明确的交互行为，应该允许播放）
+    if (audioRef.current) {
+      audioRef.current.src = segments[currentSegment]?.audioFile || audioFiles[0];
+      audioRef.current.load(); // 预加载
+      audioRef.current.play().catch((err) => {
+        console.log("音频播放失败:", err);
+        alert("无法播放音频，请检查浏览器权限");
+      });
+    }
+    
     setIsRunning(true);
     setIsPaused(false);
   };
