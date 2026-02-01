@@ -16,7 +16,7 @@ interface Preset {
 
 const SleepBreathCounter: React.FC = () => {
   // 版本号：每次修改预设数据结构或默认值时递增
-  const PRESET_VERSION = "1.0";
+  const PRESET_VERSION = "1.1";
 
   const [currentPage, setCurrentPage] = useState<"home" | "timer">("home");
   const [presets, setPresets] = useState<Preset[]>([]);
