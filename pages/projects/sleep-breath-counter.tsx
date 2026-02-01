@@ -39,6 +39,11 @@ const SleepBreathCounter: React.FC = () => {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Web Audio API 相关
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   const audioFiles = [
     "/sleep-breath-counter/audio/ding-101492.mp3",
@@ -49,14 +54,34 @@ const SleepBreathCounter: React.FC = () => {
   // 加载预设和预加载音频
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // 初始化 AudioContext
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        audioContextRef.current = new AudioContextClass();
+      }
+      
+      // 预加载和解码所有音频文件
+      const loadAudioBuffers = async () => {
+        for (const file of audioFiles) {
+          try {
+            const response = await fetch(file);
+            const arrayBuffer = await response.arrayBuffer();
+            if (audioContextRef.current) {
+              const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+              audioBuffersRef.current.set(file, audioBuffer);
+              console.log(`音频加载完成: ${file}`);
+            }
+          } catch (err) {
+            console.error(`音频加载失败: ${file}`, err);
+          }
+        }
+      };
+      
+      loadAudioBuffers();
+      
+      // 保留旧的 Audio 元素作为后备
       audioRef.current = new Audio();
-      // 预加载所有音频文件
-      audioFiles.forEach(file => {
-        const audio = new Audio();
-        audio.preload = 'auto';
-        audio.src = file;
-        audio.load();
-      });
+      
       loadPresets();
     }
   }, []);
@@ -106,8 +131,42 @@ const SleepBreathCounter: React.FC = () => {
   };
 
   const playBeep = (audioFile?: string) => {
+    const file = audioFile || audioFiles[0];
+    
+    // 尝试使用 Web Audio API
+    if (audioContextRef.current && audioBuffersRef.current.has(file)) {
+      try {
+        // 激活 AudioContext（iOS 需要）
+        if (audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+        
+        // 停止之前的音频
+        if (currentSourceRef.current) {
+          try {
+            currentSourceRef.current.stop();
+          } catch (e) {
+            // 忽略错误
+          }
+        }
+        
+        // 创建新的音频源
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = audioBuffersRef.current.get(file)!;
+        source.connect(audioContextRef.current.destination);
+        source.start(0);
+        currentSourceRef.current = source;
+        
+        console.log(`使用 Web Audio API 播放: ${file}`);
+        return;
+      } catch (err) {
+        console.log("使用 Web Audio API 失败，回退到 HTML Audio:", err);
+      }
+    }
+    
+    // 回退到传统 HTML Audio
     if (audioRef.current) {
-      audioRef.current.src = audioFile || audioFiles[0];
+      audioRef.current.src = file;
       audioRef.current.play().catch((err) => {
         console.log("音频播放被阻止:", err);
       });
@@ -135,20 +194,30 @@ const SleepBreathCounter: React.FC = () => {
       setPresets(currentPresets);
       
       // 预热第一个音频，确保点击开始时能立即播放
-      // 移动端优化：触摸交互时尝试播放静音音频解锁音频上下文
-      if (audioRef.current && preset.segments[0]) {
-        audioRef.current.src = preset.segments[0].audioFile;
-        audioRef.current.volume = 0.01; // 几乎静音
-        audioRef.current.load();
-        // 尝试播放一下然后立即暂停，解锁移动端音频
-        audioRef.current.play().then(() => {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-          audioRef.current.volume = 1; // 恢复音量
-        }).catch(() => {
-          // 静默失败
-          audioRef.current.volume = 1;
-        });
+      // 移动端优化：触摸交互时尝试激活 AudioContext
+      if (preset.segments[0]) {
+        // 激活 Web Audio API
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().then(() => {
+            console.log('AudioContext 已激活');
+          }).catch(err => {
+            console.log('AudioContext 激活失败:', err);
+          });
+        }
+        
+        // 同时预热 HTML Audio 作为后备
+        if (audioRef.current) {
+          audioRef.current.src = preset.segments[0].audioFile;
+          audioRef.current.volume = 0.01;
+          audioRef.current.load();
+          audioRef.current.play().then(() => {
+            audioRef.current!.pause();
+            audioRef.current!.currentTime = 0;
+            audioRef.current!.volume = 1;
+          }).catch(() => {
+            audioRef.current!.volume = 1;
+          });
+        }
       }
     }
   };
@@ -206,40 +275,16 @@ const SleepBreathCounter: React.FC = () => {
       alert("请先添加时间段");
       return;
     }
+    
     // 开始时确保倒计时从当前段落时长开始
     setTimeLeft(segments[currentSegment]?.duration * 1000 || 0);
     
-    // 移动端优化：先播放音频，等播放成功后再启动计时器
-    if (audioRef.current) {
-      audioRef.current.src = segments[currentSegment]?.audioFile || audioFiles[0];
-      audioRef.current.load();
-      
-      // 强制播放，移动端需要在用户交互事件中立即播放
-      const playPromise = audioRef.current.play();
-      
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            // 播放成功，启动计时器
-            console.log("音频播放成功");
-            setIsRunning(true);
-            setIsPaused(false);
-          })
-          .catch((err) => {
-            console.log("音频播放失败:", err);
-            // 即使播放失败也启动计时器
-            setIsRunning(true);
-            setIsPaused(false);
-          });
-      } else {
-        // 老浏览器不返回 Promise
-        setIsRunning(true);
-        setIsPaused(false);
-      }
-    } else {
-      setIsRunning(true);
-      setIsPaused(false);
-    }
+    // 立即播放音频（Web Audio API 几乎没有延迟）
+    playBeep(segments[currentSegment]?.audioFile);
+    
+    // 立即启动计时器
+    setIsRunning(true);
+    setIsPaused(false);
   };
 
   const pauseTimer = () => {
