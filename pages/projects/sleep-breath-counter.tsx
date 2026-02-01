@@ -15,6 +15,9 @@ interface Preset {
 }
 
 const SleepBreathCounter: React.FC = () => {
+  // 版本号：每次修改预设数据结构或默认值时递增
+  const PRESET_VERSION = "1.0";
+
   const [currentPage, setCurrentPage] = useState<"home" | "timer">("home");
   const [presets, setPresets] = useState<Preset[]>([]);
   const [currentPreset, setCurrentPreset] = useState<Preset | null>(null);
@@ -52,7 +55,17 @@ const SleepBreathCounter: React.FC = () => {
   }, []);
 
   const loadPresets = () => {
+    // 检查版本号
+    const savedVersion = localStorage.getItem("timer_presets_version");
     let savedPresets = localStorage.getItem("timer_presets");
+    
+    // 如果版本不匹配，清除旧数据
+    if (savedVersion !== PRESET_VERSION) {
+      localStorage.removeItem("timer_presets");
+      savedPresets = null;
+      console.log("检测到新版本，已清除旧数据");
+    }
+    
     if (!savedPresets) {
       const defaultPresets: Preset[] = [
         {
@@ -67,6 +80,7 @@ const SleepBreathCounter: React.FC = () => {
         },
       ];
       localStorage.setItem("timer_presets", JSON.stringify(defaultPresets));
+      localStorage.setItem("timer_presets_version", PRESET_VERSION);
       setPresets(defaultPresets);
     } else {
       setPresets(JSON.parse(savedPresets));
@@ -274,7 +288,9 @@ const SleepBreathCounter: React.FC = () => {
     const newSegment: Segment = {
       name: segmentName,
       duration,
-      audioFile: audioFiles[segments.length % audioFiles.length],
+      audioFile: editingSegmentIndex >= 0 
+        ? segments[editingSegmentIndex].audioFile // 编辑时保留原有音频文件
+        : audioFiles[segments.length % audioFiles.length], // 新增时分配新音频文件
     };
 
     if (editingSegmentIndex >= 0) {
