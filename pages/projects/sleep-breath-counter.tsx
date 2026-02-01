@@ -135,9 +135,20 @@ const SleepBreathCounter: React.FC = () => {
       setPresets(currentPresets);
       
       // 预热第一个音频，确保点击开始时能立即播放
+      // 移动端优化：触摸交互时尝试播放静音音频解锁音频上下文
       if (audioRef.current && preset.segments[0]) {
         audioRef.current.src = preset.segments[0].audioFile;
+        audioRef.current.volume = 0.01; // 几乎静音
         audioRef.current.load();
+        // 尝试播放一下然后立即暂停，解锁移动端音频
+        audioRef.current.play().then(() => {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+          audioRef.current.volume = 1; // 恢复音量
+        }).catch(() => {
+          // 静默失败
+          audioRef.current.volume = 1;
+        });
       }
     }
   };
@@ -198,18 +209,37 @@ const SleepBreathCounter: React.FC = () => {
     // 开始时确保倒计时从当前段落时长开始
     setTimeLeft(segments[currentSegment]?.duration * 1000 || 0);
     
-    // 立即播放音频（用户点击开始是明确的交互行为，应该允许播放）
+    // 移动端优化：先播放音频，等播放成功后再启动计时器
     if (audioRef.current) {
       audioRef.current.src = segments[currentSegment]?.audioFile || audioFiles[0];
-      audioRef.current.load(); // 预加载
-      audioRef.current.play().catch((err) => {
-        console.log("音频播放失败:", err);
-        alert("无法播放音频，请检查浏览器权限");
-      });
+      audioRef.current.load();
+      
+      // 强制播放，移动端需要在用户交互事件中立即播放
+      const playPromise = audioRef.current.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            // 播放成功，启动计时器
+            console.log("音频播放成功");
+            setIsRunning(true);
+            setIsPaused(false);
+          })
+          .catch((err) => {
+            console.log("音频播放失败:", err);
+            // 即使播放失败也启动计时器
+            setIsRunning(true);
+            setIsPaused(false);
+          });
+      } else {
+        // 老浏览器不返回 Promise
+        setIsRunning(true);
+        setIsPaused(false);
+      }
+    } else {
+      setIsRunning(true);
+      setIsPaused(false);
     }
-    
-    setIsRunning(true);
-    setIsPaused(false);
   };
 
   const pauseTimer = () => {
