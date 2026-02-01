@@ -18,7 +18,7 @@ const IterationDetailCard: React.FC<Props> = ({
   updateIteration,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [editedIteration, setEditedIteration] = useState(null);
+  const [editedIteration, setEditedIteration] = useState(iteration);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -29,9 +29,9 @@ const IterationDetailCard: React.FC<Props> = ({
     setIsEditing(false);
   };
 
-  useEffect(() => {
-    setEditedIteration(iteration);
-  }, [iteration]);
+  // useEffect(() => {
+  //   setEditedIteration(iteration);
+  // }, [iteration]);
 
   return (
     <>
