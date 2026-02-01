@@ -46,10 +46,17 @@ const SleepBreathCounter: React.FC = () => {
     "/sleep-breath-counter/audio/metallophone-1-3-88146.mp3",
   ];
 
-  // 加载预设
+  // 加载预设和预加载音频
   useEffect(() => {
     if (typeof window !== "undefined") {
       audioRef.current = new Audio();
+      // 预加载所有音频文件
+      audioFiles.forEach(file => {
+        const audio = new Audio();
+        audio.preload = 'auto';
+        audio.src = file;
+        audio.load();
+      });
       loadPresets();
     }
   }, []);
@@ -126,6 +133,12 @@ const SleepBreathCounter: React.FC = () => {
       
       // 同步更新 presets state
       setPresets(currentPresets);
+      
+      // 预热第一个音频，确保点击开始时能立即播放
+      if (audioRef.current && preset.segments[0]) {
+        audioRef.current.src = preset.segments[0].audioFile;
+        audioRef.current.load();
+      }
     }
   };
 
